@@ -3,4 +3,4 @@ This is a repository for all scripts used to create the HoloR database of rumina
 
 What is missing?
 - storf reporter
-- dereplication scripts
+
