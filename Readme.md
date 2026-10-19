@@ -13,7 +13,7 @@ Annotation scripts:
 | barrnap.sh| |
 | checkm2.sh| |
 | sourmash_sig.sh| |
-|-------|----------------------|
+
 
 
 Add info on:
