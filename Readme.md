@@ -4,15 +4,15 @@ Annotation scripts:
 
 | Script | What it does it do? |
 |--------|---------------------|
-|dbCAN.sh | |
-|resfinder.sh | |
-| ncbi_amrfinder.sh| |
-| gtdbtk.sh| |
-| eggNOG.sh | |
-| bakta.sh| |
-| barrnap.sh| |
-| checkm2.sh| |
-| sourmash_sig.sh| |
+|dbCAN.sh | Predicts carbohydrate-active enzyme annotations |
+|resfinder.sh | Predicts ARGs |
+| ncbi_amrfinder.sh| Predicts ARGs|
+| gtdbtk.sh| Taxonomic predictions |
+| eggNOG.sh | Functional gene family predictions. |
+| bakta.sh| Predicts coding regions |
+| barrnap.sh| Predicts tRNA and rRNA regions |
+| checkm2.sh| Predicts completeness and contamination |
+| sourmash_sig.sh| Creates genome signatures|
 
 
 
