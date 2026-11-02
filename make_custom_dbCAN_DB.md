@@ -182,6 +182,7 @@ done
 ```
 ## Step 4: Build custom DIAMOND database
 ```
+# Concatenate and dereplicate
 cd cazyme_seqs
 for i in *faa; do cat $i; done > all_cazymes_raw.fa
 # Dereplicate at 90% identity (adjust -c and -n for your memory budget)
@@ -191,6 +192,23 @@ cd-hit -i all_cazymes_raw.faa \
        -T 32 -M 64000 \
        -d 0
 
+# Fix family names in headers
+python3 -I - <<'EOF'
+import re, sys
+
+with open("all_cazymes_100.faa") as fh, open("all_cazymes_100_fixed.faa", "w") as out:
+    for line in fh:
+        if line.startswith(">"):
+            parts = line[1:].rstrip().split("|")
+            if len(parts) >= 2:
+                parts[1] = re.sub(r'\([^)]*\)', '', parts[1]).split('+')[0].strip()
+            out.write(">" + "|".join(parts) + "\n")
+        else:
+            out.write(line)
+EOF
+# Check the number of gene families (it should be ~700)
+grep "^>" all_cazymes_100_fixed.faa | awk -F'|' '{print $2}' | sort -u | wc -l
+
 # Build DIAMOND database
 diamond makedb \
     --in  all_cazymes_90.faa \
@@ -199,69 +217,141 @@ diamond makedb \
 ```
 ## Step 5: Build custom HMM database
 ```
-# Split sequences by family
-python3 - <<'EOF'
+# Convert to two-line FASTA, sort by family, split into per-family files
+awk '/^>/{if(seq) print seq; print; seq=""} !/^>/{seq=seq$0} END{if(seq) print seq}' \
+    all_cazymes_100_fixed.faa > all_cazymes_2line.faa
+
+paste - - < all_cazymes_2line.faa \
+    | sort -t'|' -k2,2 --parallel=4 \
+    | tr '\t' '\n' > all_cazymes_sorted.faa
+
+# Stream through sorted file — one file open at a time
+python3 -I - <<'EOF'
 from pathlib import Path
-import sys
-
 Path("family_seqs").mkdir(exist_ok=True)
-handles = {}
-current_family = None
-write = False
-
-with open("all_cazymes_90.faa") as fh:
+current_family, current_handle, n = None, None, 0
+with open("all_cazymes_sorted.faa") as fh:
     for line in fh:
         if line.startswith(">"):
             parts = line[1:].split("|")
-            if len(parts) >= 2:
-                family = parts[1]
-                if family not in handles:
-                    handles[family] = open(f"family_seqs/{family}.faa", "w")
+            family = parts[1] if len(parts) >= 2 else None
+            if family != current_family:
+                if current_handle: current_handle.close()
                 current_family = family
-                handles[current_family].write(line)
-        else:
-            if current_family:
-                handles[current_family].write(line)
-
-for h in handles.values():
-    h.close()
-print(f"Wrote {len(handles)} family FASTA files", file=sys.stderr)
+                current_handle = open(f"family_seqs/{family}.faa", "w") if family else None
+                if family: n += 1
+            if current_handle: current_handle.write(line)
+        elif current_handle:
+            current_handle.write(line)
+if current_handle: current_handle.close()
+print(f"Wrote {n} family files", file=__import__('sys').stderr)
 EOF
+# Filter family list to valid CAZyme families
+find family_seqs -name "*.faa" > family_list_orig.txt
 
-# Align each family and build HMM (SLURM array or parallel)
-build_family_hmm() {
-    faa="$1"
-    family=$(basename "$faa" .faa)
-    hmm="family_hmms/${family}.hmm"
-    [[ -f "$hmm" ]] && return
-    mkdir -p family_hmms
+# Keep only real CAZyme class prefixes
+grep -P '^family_seqs/(GH|GT|PL|CE|AA|CBM)[0-9]' family_list_orig.txt > family_list.txt
+wc -l family_list.txt
 
-    # Cap at 5000 seqs per family to keep alignment tractable
-    n=$(grep -c "^>" "$faa")
-    if (( n > 5000 )); then
-        seqtk sample -s42 "$faa" 5000 > /tmp/${family}_sub.faa
-        faa=/tmp/${family}_sub.faa
-    fi
+## Build HMM profiles (file name: build_hmms_array.sh)
+#!/bin/bash
+#SBATCH --job-name=build_hmms
+#SBATCH --partition=k2-medpri,k2-bioinf
+#SBATCH --array=1-747
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=6:00:00
+#SBATCH --output=logs/build_hmms-%A-%a.out
+#SBATCH --error=logs/build_hmms-%A-%a.err
 
-    mafft --auto --thread 4 "$faa" 2>/dev/null | \
-        hmmbuild --cpu 4 "$hmm" - > /dev/null 2>&1
-}
-export -f build_family_hmm
+MAFFT=/mnt/scratch2/igfs-anaconda/conda-envs/mafft_v7.525/bin/mafft
+HMMBUILD=/mnt/scratch2/igfs-anaconda/conda-envs/hmmer_3.4/bin/hmmbuild
 
-find family_seqs -name "*.faa" | \
-    parallel -j 8 build_family_hmm {}
+mkdir -p family_hmms logs
 
-# Concatenate and press
+faa=$(sed -n "${SLURM_ARRAY_TASK_ID}p" family_list.txt)
+[[ -z "$faa" ]] && exit 0
+
+family=$(basename "$faa" .faa)
+hmm="family_hmms/${family}.hmm"
+
+[[ -f "$hmm" ]] && [[ -s "$hmm" ]] && exit 0   # skip if already done and non-empty
+
+# Skip if fewer than 2 sequences
+n=$(grep -c "^>" "$faa")
+if (( n < 2 )); then
+    echo "SKIP: $family has only $n sequence(s)"
+    exit 0
+fi
+
+# Subsample to 2000 sequences if needed
+input_faa="$faa"
+if (( n > 2000 )); then
+    tmpfile="/tmp/${family}_sub_${SLURM_ARRAY_TASK_ID}.faa"
+    python3 -I - "$faa" "$tmpfile" <<'EOF'
+import sys, random
+
+in_faa, out_faa = sys.argv[1], sys.argv[2]
+
+seqs = []
+current_header = None
+current_seq = []
+with open(in_faa) as fh:
+    for line in fh:
+        if line.startswith(">"):
+            if current_header:
+                seqs.append((current_header, "".join(current_seq)))
+            current_header = line
+            current_seq = []
+        else:
+            current_seq.append(line)
+    if current_header:
+        seqs.append((current_header, "".join(current_seq)))
+
+random.seed(42)
+sampled = random.sample(seqs, min(2000, len(seqs)))
+
+with open(out_faa, "w") as out:
+    for header, seq in sampled:
+        out.write(header)
+        out.write(seq)
+EOF
+    input_faa="$tmpfile"
+fi
+
+# Align and build HMM
+"$MAFFT" --quiet --auto --thread "$SLURM_CPUS_PER_TASK" "$input_faa" \
+    | "$HMMBUILD" --informat afa -n "$family" --cpu "$SLURM_CPUS_PER_TASK" "$hmm" -
+
+echo "Exit code: $?"
+
+[[ "$input_faa" != "$faa" ]] && rm -f "$input_faa"
+
+
+# Concatenate and press HMMs
 cat family_hmms/*.hmm > custom_cazyme.hmm
 hmmpress custom_cazyme.hmm
 ```
 ## Step 6: Test custom databases using dbCAN
 ```
+#!/bin/bash
+#SBATCH --time=23:59:59
+#SBATCH --partition=k2-medpri,k2-bioinf
+#SBATCH --job-name=dbCAN_holor
+#SBATCH --mem=50G
+#SBATCH --ntasks=1
+#SBATCH --mail-user=ldillon05@qub.ac.uk
+#SBATCH --mail-type=END,BEGIN,FAIL
+#SBATCH --error=dbCAN_holor-%j.err
+#SBATCH --output=dbCAN_holor-%j.out
+
+source activate /mnt/scratch2/igfs-anaconda/conda-envs/dbCAN
+
+
 run_dbcan CAZyme_annotation \
-    --input_raw_data  sample.faa \
+    --input_raw_data  02f06-5270-4861-9fb9-956eae9f4ff6/02f06-5270-4861-9fb9-956eae9f4ff6.faa \
     --mode            protein \
-    --db_dir          /path/to/your/custom_db_dir \
-    --output_dir      out/ \
+    --db_dir          dbCAN_dbs/ \
+    --output_dir      test_dbCAN/ \
     --methods         diamond,hmm \
-    --threads         8
 ```
