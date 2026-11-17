@@ -10,7 +10,7 @@
 module load apps/ncbiblast/2.15.0/gcc-14.1.0
 
 blastn \
-    -query all_16S_queries.fa \ # this is all barrnap holor results
+    -query rrna/all_16S.fasta \ # this is all barrnap holor results
     -db ../../all_for_70th-build_db \
     -task blastn \
     -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen" \
