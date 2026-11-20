@@ -8,8 +8,7 @@ We have developed three custom databases from our genomes specifically for rumin
 
 ### Development:
 Please see the folder "custom_databases" for instructions on how each database was developed. 
-Download:
-To download our databases use the following commands:
+
 #### Download data:
 ```
 # Put wget script here 
