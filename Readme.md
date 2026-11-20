@@ -1,6 +1,7 @@
 # HoloR database 
 The HoloR has been developed for ruminant microbiome researchers. We sourced 193,368 genomes and MAGs from various ruminant hosts and body sites. We dereplicated the data at 100% using skDER. Then we used CheckM2 to assess quality. Medium- and high-quality genomes were then taken to be the final dataset. We used consistent annotations across all the data (see Annotation scripts for details). We validated our database by using Bowtie2 to assess read mapping for ruminant microbiome samples of both internal (used to make the database) and external (not used in database development). We also developed custom databases, and the details of how to download and use them are below.
 
+<img width="1228" height="809" alt="Screenshot 2026-11-20 at 14 32 36" src="https://github.com/user-attachments/assets/a5b0fe06-ab69-4e68-8683-382270436325" />
 
 
 ## Custom databases:
