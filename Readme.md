@@ -6,7 +6,7 @@ The HoloR has been developed for ruminant microbiome researchers. We sourced 193
 ## Custom databases:
 We have developed three custom databases from our genomes specifically for ruminant research: Kraken2, BLASTp and dbCAN. 
 
-### Development:
+#### Development:
 Please see the folder "custom_databases" for instructions on how each database was developed. 
 
 #### Download data:
