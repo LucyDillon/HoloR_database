@@ -8,6 +8,9 @@
 #SBATCH --error=kraken-%j.err
 #SBATCH --job-name=kraken
 
+
+### This script was used to classify unassigned reads for samples less than 70% overall alignment
+
 set -euo pipefail
 
 # Activate Kraken2 environment
