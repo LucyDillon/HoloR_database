@@ -58,4 +58,9 @@ dbCAN script
 
 ## Database validation:
 ### Read mapping
+To validate our database, we mapped external ruminant microbiome samples to our database to understand how representative our database is of a random ruminant sample. For the complete workflow, please go into the read_mapping folder.
+
+### Custom database validation
+We tested our custom databases against the standard versions.
+
 
