@@ -13,25 +13,50 @@ Please see the folder "custom_databases" for instructions on how each database w
 
 #### Download data:
 ```
-# Put wget script here 
+# Put wget script here
+wget https://pure.qub.ac.uk/en/datasets/HoloRxxxx
 ```
-#### Concatenate files for database
+#### Concatenate files for databases
 ```
-### concatenate
+### Due to database file size restrictions, we need to concatenate the database files
+# for the custom nonredundant protein BLAST database:
+cat holoR_nonredundant_db.tar.gz* > Protein_holoR_nonredundant_db.tar.gz
+
+# for all genomes:
+cat fasta_files.tar.gz* > Genomes_fasta_files.tar.gz
+
+# for custom HoloR Kraken2 database:
+cat kraken_db.tar.gz* > HoloR_kraken_db.tar.gz
+
 ```
 #### How to run custom DBs
 ##### Kraken2
 ```
-kraken script
+kraken2 \
+        --db /path/to/kraken_database \
+        --paired read_1.fastq read_2.fastq \
+        --confidence 0.1 \
+        --classified-out classified-out.R#.fq \
+        --unclassified-out unclassified-out.R#.fq \
+        --output kraken_output_out.txt \
+        --report kreport_out.txt \
+        --threads 8 #change based on your usage
 ```
 mem and cpu requirements
 ##### BLASTp
 ```
-blast script
+blastn -query test.fasta -db holoR_nonredundant_db \
+  -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen" \
+  -out output.tsv
 ```
 ##### dbCAN
 ```
-dbCAN script
+run_dbcan CAZyme_annotation \
+    --input_raw_data  test.faa \
+    --mode            protein \
+    --db_dir          dbCAN_dbs/ \
+    --output_dir      test_dbCAN/ \
+    --methods         diamond,hmm \
 ```
 
 
